@@ -20,6 +20,15 @@ const MODE_AR = {
   currency: 'عملة',
 }
 
+// map common Arabic mode labels back to canonical keys
+const AR_TO_KEY = {
+  'استكشاف': 'explore',
+  'قراءة': 'read',
+  'وصف': 'describe',
+  'بحث': 'find',
+  'عملة': 'currency',
+}
+
 const NAV = [
   { key: 'dashboard', label: 'لوحة التحكم' },
   { key: 'alerts',    label: 'التنبيهات' },
@@ -29,14 +38,25 @@ const NAV = [
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Supabase may return timestamps without timezone info — always treat as UTC
+function parseDate(s) {
+  if (!s) return null
+  if (typeof s === 'string' && !s.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(s)) {
+    return new Date(s.replace(' ', 'T') + 'Z')
+  }
+  return new Date(s)
+}
+
 function translateMode(mode) {
   if (!mode || mode === '—') return '—'
-  return MODE_AR[mode.toLowerCase()] || mode
+  const normalized = String(mode).trim()
+  if (AR_TO_KEY[mode]) return MODE_AR[AR_TO_KEY[mode]] || mode
+  return MODE_AR[normalized.toLowerCase()] || mode
 }
 
 function timeAgo(dateStr, now) {
   if (!dateStr || !now) return '—'
-  const diff = Math.floor((now.getTime() - new Date(dateStr).getTime()) / 1000)
+  const diff = Math.floor((now.getTime() - parseDate(dateStr).getTime()) / 1000)
   if (diff < 5)  return 'الآن'
   if (diff < 60) return `منذ ${diff} ثانية`
   const m = Math.floor(diff / 60)
@@ -58,26 +78,71 @@ export default function Dashboard() {
   const [isLoaded,        setIsLoaded]        = useState(false)
   const [activeNav,       setActiveNav]       = useState('dashboard')
   const [now,             setNow]             = useState(null)
+  const [todaySessionCount, setTodaySessionCount] = useState(0)
+  const [todaySosCount,     setTodaySosCount]     = useState(0)
+  const [lastSessionInfo,   setLastSessionInfo]   = useState(null)
+  const [isCritical,        setIsCritical]        = useState(false)
 
-  // ── Data fetching (unchanged) ────────────────────────────────────────────────
+  // ── Data fetching ────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     try {
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
+      const dayStart = new Date()
+      dayStart.setHours(0, 0, 0, 0)
+      const dayEnd = new Date(dayStart)
+      dayEnd.setDate(dayEnd.getDate() + 1)
 
-      const [{ data: sess }, { data: sos }, { data: loc }] = await Promise.all([
+      const criticalSince = new Date(Date.now() - TEN_MIN)
+
+      const [
+        { data: sess },
+        { data: sos },
+        { data: loc },
+        { count: sessionCount },
+        { count: sosCount },
+        { data: latestSessionWithMode },
+        { count: criticalSosCount },
+      ] = await Promise.all([
         supabase.from('sessions').select('*')
-          .gte('created_at', today.toISOString())
           .order('created_at', { ascending: false }).limit(50),
         supabase.from('sos_alerts').select('*')
           .order('created_at', { ascending: false }).limit(50),
         supabase.from('location_updates').select('*')
-          .order('created_at', { ascending: false }).limit(50),
+          .order('created_at', { ascending: false }).limit(1),
+        supabase.from('sessions')
+          .select('*', { count: 'exact', head: true })
+          .gte('created_at', dayStart.toISOString())
+          .lt('created_at', dayEnd.toISOString()),
+        supabase.from('sos_alerts')
+          .select('*', { count: 'exact', head: true })
+          .gte('created_at', dayStart.toISOString())
+          .lt('created_at', dayEnd.toISOString()),
+        supabase.from('sessions')
+          .select('mode, created_at')
+          .not('mode', 'is', null)
+          .neq('mode', '')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase.from('sos_alerts')
+          .select('*', { count: 'exact', head: true })
+          .gte('created_at', criticalSince.toISOString()),
       ])
 
       setSessions(sess || [])
       setSosAlerts(sos || [])
       setLocationUpdates(loc || [])
+      setTodaySessionCount(sessionCount || 0)
+      setTodaySosCount(sosCount || 0)
+      setLastSessionInfo(latestSessionWithMode || null)
+      setIsCritical((criticalSosCount || 0) > 0)
+
+      // Debug: log raw mode values to help trace mismatches
+      try {
+        console.debug('[AIEyes][adapted] latestSessionWithMode:', latestSessionWithMode)
+        console.debug('[AIEyes][adapted] sample session modes:', (sess || []).slice(0, 20).map(s => s.mode))
+      } catch (e) {
+        // ignore
+      }
 
       const merged = [
         ...(sess || []).map(s => ({
@@ -88,12 +153,13 @@ export default function Dashboard() {
           ...a, type: 'sos',
           label: a.message || 'تنبيه طوارئ SOS',
         })),
-      ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      ].sort((a, b) => (parseDate(b.created_at)?.getTime() ?? 0) - (parseDate(a.created_at)?.getTime() ?? 0))
 
       setActivities(merged)
       setIsConnected(true)
       setIsLoaded(true)
-    } catch {
+    } catch (err) {
+      console.error('[AIEyes] fetch error:', err)
       setIsConnected(false)
       setIsLoaded(true)
     }
@@ -111,24 +177,12 @@ export default function Dashboard() {
     return () => clearInterval(iv)
   }, [])
 
-  // ── Derived values (unchanged) ───────────────────────────────────────────────
+  // ── Derived values ───────────────────────────────────────────────────────────
   const latestLocation = locationUpdates[0]
   const lastSeen       = latestLocation?.created_at
 
-  const isCritical = now
-    ? sosAlerts.some(a => now.getTime() - new Date(a.created_at).getTime() < TEN_MIN)
-    : false
-
-  const todaySosCount = now
-    ? sosAlerts.filter(a => {
-        const d = new Date(a.created_at)
-        return d.toDateString() === now.toDateString()
-      }).length
-    : 0
-
-  const lastMode = translateMode(
-    sessions[0]?.mode || sessions[0]?.status || sessions[0]?.type || '—'
-  )
+  const lastMode           = translateMode(lastSessionInfo?.mode || '—')
+  const lastSessionTimeStr = lastSessionInfo?.created_at && now ? timeAgo(lastSessionInfo.created_at, now) : ''
 
   const lastSeenStr = lastSeen && now ? timeAgo(lastSeen, now) : '—'
   const coordStr    = latestLocation
@@ -153,9 +207,9 @@ export default function Dashboard() {
 
           <StatCard
             label="جلسات اليوم"
-            value={sessions.length}
+            value={todaySessionCount}
             icon="eye"
-            note="+4 هذه الساعة"
+            note={todaySessionCount > 0 ? 'تحديث كل 10 ث' : 'لا جلسات اليوم'}
             col="green"
           />
 
@@ -171,7 +225,7 @@ export default function Dashboard() {
             label="آخر وضع"
             value={lastMode || '—'}
             icon="mode"
-            note="آخر جلسة"
+            note={lastSessionTimeStr || 'لا جلسات'}
             col="indigo"
           />
 
@@ -202,8 +256,8 @@ export default function Dashboard() {
                 <span className={`tag ${isCritical ? 'tag-red' : 'tag-green'}`}>
                   {isCritical ? '⚠ SOS نشط' : 'داخل المنطقة ✓'}
                 </span>
-                {sessions.length > 0 && (
-                  <span className="tag tag-indigo">{sessions.length} جلسة اليوم</span>
+                {todaySessionCount > 0 && (
+                  <span className="tag tag-indigo">{todaySessionCount} جلسة اليوم</span>
                 )}
               </div>
             </div>

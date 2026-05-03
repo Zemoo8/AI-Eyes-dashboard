@@ -1,8 +1,16 @@
 'use client'
 
+function parseDate(s) {
+  if (!s) return null
+  if (typeof s === 'string' && !s.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(s)) {
+    return new Date(s.replace(' ', 'T') + 'Z')
+  }
+  return new Date(s)
+}
+
 function timeAgo(dateStr, now) {
   if (!dateStr || !now) return '—'
-  const diff = Math.floor((now.getTime() - new Date(dateStr).getTime()) / 1000)
+  const diff = Math.floor((now.getTime() - parseDate(dateStr).getTime()) / 1000)
   if (diff < 5)  return 'الآن'
   if (diff < 60) return `منذ ${diff} ثانية`
   const m = Math.floor(diff / 60)

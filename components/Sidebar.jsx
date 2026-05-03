@@ -1,15 +1,38 @@
 'use client'
-import { useState } from 'react'
 
 const NAV = [
-  { key: 'dashboard', label: 'لوحة التحكم', badge: null },
-  { key: 'alerts',    label: 'التنبيهات',   badge: null },
-  { key: 'sessions',  label: 'الجلسات',     badge: null },
-  { key: 'settings',  label: 'الإعدادات',   badge: null },
+  { key: 'dashboard', label: 'لوحة التحكم', comingSoon: false },
+  { key: 'alerts',    label: 'التنبيهات',   comingSoon: true  },
+  { key: 'sessions',  label: 'الجلسات',     comingSoon: true  },
+  { key: 'settings',  label: 'الإعدادات',   comingSoon: true  },
 ]
 
-export default function Sidebar({ active, onChange, isConnected }) {
-  const [hover, setHover] = useState(null)
+function userLabel(u, fallback = '—') {
+  if (!u) return fallback
+  return u.display_name || u.email?.split('@')[0] || u.email || fallback
+}
+
+function userInitial(u, fallback = '?') {
+  const label = userLabel(u, fallback)
+  return label.charAt(0).toUpperCase()
+}
+
+export default function Sidebar({
+  active,
+  onChange,
+  isConnected,
+  monitoredUser,
+  parentProfile,
+  linkedUsers = [],
+  selectedLink,
+  onLogout,
+  onChangeUser,
+  onUnlink,
+}) {
+  const memberName    = userLabel(monitoredUser, 'غير محدد')
+  const memberInitial = userInitial(monitoredUser, '؟')
+  const parentName    = userLabel(parentProfile, 'ولي الأمر')
+  const parentInitial = userInitial(parentProfile, 'ع')
 
   return (
     <aside className="sidebar" aria-label="القائمة الجانبية">
@@ -30,22 +53,64 @@ export default function Sidebar({ active, onChange, isConnected }) {
         <div style={{ fontSize: 9.5, color: 'var(--muted)', letterSpacing: '.1em', fontFamily: 'Space Grotesk', marginBottom: 8 }}>
           MONITORED
         </div>
-        <div className="member-card">
+        <div className="member-card" onClick={linkedUsers.length > 1 ? onChangeUser : undefined}
+          style={{ cursor: linkedUsers.length > 1 ? 'pointer' : 'default' }}>
           <div className="member-avatar">
-            ن
-            <div className={`member-online-dot ${isConnected ? '' : 'offline'}`}
-              style={{ background: isConnected ? 'var(--g)' : 'var(--muted)' }}/>
+            {memberInitial}
+            <div
+              className={`member-online-dot ${isConnected ? '' : 'offline'}`}
+              style={{ background: isConnected ? 'var(--g)' : 'var(--muted)' }}
+            />
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>نور الدين</div>
-            <div style={{ fontSize: 11, color: isConnected ? 'var(--g)' : 'var(--muted)', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {memberName}
+            </div>
+            {monitoredUser?.email && (
+              <div style={{ fontSize: 9.5, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'Space Grotesk' }}>
+                {monitoredUser.email}
+              </div>
+            )}
+            <div style={{ fontSize: 11, color: isConnected ? 'var(--g)' : 'var(--muted)', display: 'flex', alignItems: 'center', gap: 5, marginTop: 1 }}>
               {isConnected
                 ? <><span style={{ animation: 'blink 1.8s infinite', fontSize: 7 }}>●</span>مباشر الآن</>
                 : 'غير متصل'}
             </div>
           </div>
-          <span style={{ color: 'var(--muted)', fontSize: 11 }}>▾</span>
+          {linkedUsers.length > 1 && (
+            <span style={{ color: 'var(--muted)', fontSize: 11, flexShrink: 0 }}>▾</span>
+          )}
         </div>
+
+        {/* User management actions */}
+        {(onChangeUser || onUnlink) && (
+          <div style={{ display: 'flex', gap: 6, marginTop: 7 }}>
+            {onChangeUser && (
+              <button
+                onClick={onChangeUser}
+                style={{
+                  flex: 1, padding: '5px 0', borderRadius: 8, fontSize: 10,
+                  background: 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.2)',
+                  color: 'var(--ind)', cursor: 'pointer', fontFamily: 'Cairo, sans-serif', fontWeight: 600,
+                }}
+              >
+                تغيير
+              </button>
+            )}
+            {onUnlink && selectedLink && (
+              <button
+                onClick={onUnlink}
+                style={{
+                  flex: 1, padding: '5px 0', borderRadius: 8, fontSize: 10,
+                  background: 'rgba(239,68,68,.07)', border: '1px solid rgba(239,68,68,.18)',
+                  color: 'var(--danger)', cursor: 'pointer', fontFamily: 'Cairo, sans-serif', fontWeight: 600,
+                }}
+              >
+                فصل
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Navigation */}
@@ -53,13 +118,18 @@ export default function Sidebar({ active, onChange, isConnected }) {
         {NAV.map(item => (
           <button
             key={item.key}
-            onClick={() => onChange(item.key)}
-            onMouseEnter={() => setHover(item.key)}
-            onMouseLeave={() => setHover(null)}
-            className={`nav-item ${active === item.key ? 'active' : ''}`}
+            onClick={() => !item.comingSoon && onChange(item.key)}
+            className={`nav-item ${active === item.key ? 'active' : ''} ${item.comingSoon ? 'nav-item-disabled' : ''}`}
+            style={item.comingSoon ? { opacity: 0.4, cursor: 'default', pointerEvents: 'none' } : undefined}
           >
             {item.label}
-            {item.badge && <span className="nav-badge">{item.badge}</span>}
+            {item.comingSoon && (
+              <span style={{
+                fontSize: 9, fontFamily: 'Space Grotesk', letterSpacing: '.05em',
+                padding: '1px 6px', borderRadius: 6, marginRight: 'auto',
+                background: 'rgba(255,255,255,.07)', color: 'var(--muted)',
+              }}>قريباً</span>
+            )}
           </button>
         ))}
       </nav>
@@ -79,7 +149,6 @@ export default function Sidebar({ active, onChange, isConnected }) {
                 {isConnected ? 'متصل' : 'غير متصل'}
               </span>
             </div>
-            {/* signal bars */}
             <div className="signal-bars">
               {[1,2,3,4].map(i => (
                 <div key={i} className="signal-bar" style={{
@@ -99,7 +168,7 @@ export default function Sidebar({ active, onChange, isConnected }) {
           </div>
         </div>
 
-        {/* User */}
+        {/* Parent user + logout */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
           <div style={{
             width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
@@ -107,14 +176,26 @@ export default function Sidebar({ active, onChange, isConnected }) {
             border: '1px solid rgba(168,85,247,.4)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 13, fontWeight: 700, color: 'var(--pur)',
-          }}>ع</div>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 600 }}>ولي الأمر</div>
+          }}>{parentInitial}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {parentName}
+            </div>
             <div style={{ fontSize: 10, color: 'var(--muted)' }}>مدير الحساب</div>
           </div>
-          <div style={{ marginRight: 'auto', width: 7, height: 7, borderRadius: '50%',
-            background: isConnected ? 'var(--g)' : 'var(--muted)',
-            boxShadow: isConnected ? '0 0 6px var(--g)' : undefined }}/>
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              title="تسجيل الخروج"
+              style={{
+                width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.18)',
+                color: 'var(--danger)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 13,
+              }}
+            >↩</button>
+          )}
         </div>
       </div>
     </aside>

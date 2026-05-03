@@ -12,7 +12,15 @@
       "Bash(git rm *)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(dir C:UsersLENOVOaieyes-dashboard *)",
+      "Bash(git log *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\LENOVO\\\\aieyes-dashboard\" -Recurse -Force)",
+      "Bash(Select-Object FullName)",
+      "Bash(ConvertTo-Csv -NoTypeInformation)",
+      "Bash(Out-String)",
+      "Bash(npx eslint *)",
+      "Bash(npx next *)"
     ]
   }
 }

@@ -1,10 +1,16 @@
 'use client'
 import { useState, useEffect } from 'react'
 
-export default function Topbar({ isConnected, sosCount = 0 }) {
+function userLabel(u) {
+  if (!u) return null
+  return u.display_name || u.email?.split('@')[0] || u.email || null
+}
+
+export default function Topbar({ isConnected, sosCount = 0, monitoredUser, onLogout, onChangeUser }) {
   const [time, setTime] = useState(null)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTime(new Date())
     const iv = setInterval(() => setTime(new Date()), 1000)
     return () => clearInterval(iv)
@@ -13,6 +19,8 @@ export default function Topbar({ isConnected, sosCount = 0 }) {
   const ts = time
     ? time.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     : '--:--:--'
+
+  const monLabel = userLabel(monitoredUser)
 
   return (
     <header className="topbar" dir="rtl">
@@ -28,10 +36,38 @@ export default function Topbar({ isConnected, sosCount = 0 }) {
       <div style={{ width: 1, height: 16, background: 'var(--bd)' }}/>
 
       {/* Timestamp */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontSize: 12, color: 'var(--muted)' }}>آخر تحديث</span>
         <span style={{ fontSize: 13, color: 'rgba(255,255,255,.6)', fontFamily: 'Space Grotesk', letterSpacing: '.03em' }}>{ts}</span>
       </div>
+
+      {/* Monitored user pill */}
+      {monLabel && (
+        <>
+          <div style={{ width: 1, height: 16, background: 'var(--bd)' }}/>
+          <button
+            onClick={onChangeUser}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '4px 12px', borderRadius: 20,
+              background: 'rgba(99,102,241,.07)', border: '1px solid rgba(99,102,241,.22)',
+              color: 'var(--ind)', fontSize: 11.5, fontWeight: 600,
+              cursor: onChangeUser ? 'pointer' : 'default',
+              fontFamily: 'Cairo, sans-serif',
+              transition: 'all .2s',
+            }}
+          >
+            <span style={{ fontSize: 8, color: 'var(--muted)' }}>متابعة</span>
+            <span style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {monLabel}
+            </span>
+            {onChangeUser && <span style={{ fontSize: 9, color: 'var(--muted)' }}>▾</span>}
+          </button>
+        </>
+      )}
+
+      {/* Spacer */}
+      <div style={{ flex: 1 }}/>
 
       {/* SOS button */}
       <div className="sos-btn">
@@ -64,8 +100,18 @@ export default function Topbar({ isConnected, sosCount = 0 }) {
         {isConnected ? 'مباشر' : 'غير متصل'}
       </div>
 
-      {/* Avatar */}
-      <div className="avatar-btn">ع</div>
+      {/* Avatar / logout */}
+      <button
+        className="avatar-btn"
+        onClick={onLogout}
+        title="تسجيل الخروج"
+        style={{ cursor: onLogout ? 'pointer' : 'default' }}
+      >
+        {monitoredUser
+          ? (userLabel(monitoredUser)?.charAt(0).toUpperCase() || 'ع')
+          : 'ع'
+        }
+      </button>
     </header>
   )
 }
