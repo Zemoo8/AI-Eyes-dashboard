@@ -188,6 +188,7 @@ export default function Dashboard() {
           }
           setSelectedLink(null)
           setSelectedAppUserId(null)
+          isAuthenticatedRef.current = true
           setScreen('pairing')
           return
         }
@@ -215,8 +216,10 @@ export default function Dashboard() {
         if (!mounted || resolved) return
         setInitError(err?.message || 'خطأ غير متوقع — حاول مجدداً')
         if (authInitStageRef.current === 'links-loaded') {
+          isAuthenticatedRef.current = true
           setScreen('pairing')
         } else if (authInitStageRef.current === 'session-found') {
+          isAuthenticatedRef.current = true
           setScreen('pairing')
         } else {
           setScreen('auth')
@@ -294,7 +297,20 @@ export default function Dashboard() {
         authInitTokenRef.current = Symbol('aieyes-auth-init')
         authInitStageRef.current = 'starting'
         console.log('[AIEyes] session found')
+        const signInSafetyTimer = setTimeout(() => {
+          if (mounted && !resolved) {
+            console.warn('[AIEyes] SIGNED_IN processing timed out')
+            if (authInitStageRef.current === 'session-found' || authInitStageRef.current === 'links-loaded') {
+              isAuthenticatedRef.current = true
+              setScreen('pairing')
+            } else {
+              setScreen('auth')
+            }
+            finishInit()
+          }
+        }, 8000)
         await processAuthUser(session.user)
+        clearTimeout(signInSafetyTimer)
         finishInit()
       }
     })
